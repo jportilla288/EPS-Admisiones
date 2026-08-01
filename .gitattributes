@@ -1,0 +1,31 @@
+# Normaliza los finales de línea en el repositorio: LF en el histórico,
+# nativos en el working copy. Evita diffs ruidosos entre Windows y Linux.
+* text=auto
+
+*.cs        text diff=csharp
+*.razor     text
+*.csproj    text
+*.sln       text eol=crlf
+*.props     text
+*.json      text
+*.md        text
+*.css       text
+*.sql       text
+*.yml       text
+*.yaml      text
+Dockerfile  text
+*.http      text
+
+# El script de arranque de los contenedores lo ejecuta Linux: siempre LF.
+*.sh        text eol=lf
+
+# Binarios: nunca normalizar.
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.svg       text
+*.pdf       binary
+*.ico       binary
+*.dll       binary
+*.pfx       binary

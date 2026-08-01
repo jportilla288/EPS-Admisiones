@@ -1,0 +1,228 @@
+@page "/admisiones"
+@rendermode InteractiveServer
+
+@using EPS.Admisiones.Application.Contracts
+@using EPS.Admisiones.Application.Ports
+
+@inject IServiceScopeFactory ScopeFactory
+
+@* Listado consultable de admisiones. A diferencia del monitoreo en vivo, esta
+   pagina no se suscribe a eventos: es una consulta bajo demanda, que es lo que
+   necesita el personal administrativo cuando busca un caso concreto. *@
+
+<PageTitle>Consultar admisiones &middot; EPS</PageTitle>
+
+<nav class="migas" aria-label="Ruta de navegacion">
+    <a href="">Inicio</a><span>/</span>Consultar admisiones
+</nav>
+
+<header class="pagina__encabezado">
+    <div>
+        <h1>Consultar admisiones</h1>
+        <p class="pagina__descripcion">
+            Registro de admisiones con el copago bloqueado y el estado de
+            sincronizacion de la historia clinica.
+        </p>
+    </div>
+
+    <div class="acciones" style="border-top:none;padding-top:0">
+        <a class="boton boton--secundario" href="dashboard">Monitoreo en vivo</a>
+        <a class="boton boton--primario" href="admisiones/nueva">Registrar admision</a>
+    </div>
+</header>
+
+<section class="panel">
+    <header class="panel__encabezado">
+        <span class="panel__titulo">Admisiones registradas</span>
+        <button type="button" class="boton boton--secundario" @onclick="RecargarAsync" disabled="@_cargando">
+            @if (_cargando)
+            {
+                <span class="girador" aria-hidden="true"></span>
+            }
+            <span>Actualizar</span>
+        </button>
+    </header>
+
+    <div class="panel__barra">
+        <div class="buscador">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <circle cx="11" cy="11" r="7" />
+                <path d="M21 21l-4.3-4.3" />
+            </svg>
+            <input type="search"
+                   placeholder="Buscar por numero de documento..."
+                   aria-label="Buscar por numero de documento"
+                   value="@_busqueda"
+                   @oninput="OnBuscar" />
+        </div>
+
+        <select aria-label="Filtrar por estado"
+                style="max-width:220px;padding:0.45rem 0.7rem;border:1px solid var(--borde-fuerte);border-radius:var(--radio-sm);font-family:inherit;font-size:0.86rem"
+                value="@_filtroEstado"
+                @onchange="OnFiltrarEstado">
+            <option value="">Todos los estados</option>
+            <option value="Sincronizada">Sincronizada</option>
+            <option value="PendienteSincronizacion">Pendiente</option>
+            <option value="FallidaSincronizacion">Fallida</option>
+        </select>
+
+        <span class="contador">@Filtradas.Count de @_admisiones.Count</span>
+    </div>
+
+    @if (_cargando && _admisiones.Count == 0)
+    {
+        <div class="panel__cuerpo">
+            @for (var i = 0; i < 5; i++)
+            {
+                <div class="esqueleto" style="margin-bottom:0.8rem;width:@(100 - i * 6)%"></div>
+            }
+        </div>
+    }
+    else if (Filtradas.Count == 0)
+    {
+        <div class="vacio">
+            <div class="vacio__icono">
+                <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="7" />
+                    <path d="M21 21l-4.3-4.3" />
+                </svg>
+            </div>
+            <p class="vacio__titulo">
+                @(_admisiones.Count == 0 ? "Aun no hay admisiones" : "Sin resultados")
+            </p>
+            <p>
+                @if (_admisiones.Count == 0)
+                {
+                    <text>
+                        Registra la primera desde <a href="admisiones/nueva">Registrar admision</a>.
+                    </text>
+                }
+                else
+                {
+                    <text>Ninguna admision coincide con los filtros aplicados.</text>
+                }
+            </p>
+        </div>
+    }
+    else
+    {
+        <div class="tabla-envoltura">
+            <table class="tabla">
+                <thead>
+                    <tr>
+                        <th scope="col">Fecha y hora</th>
+                        <th scope="col">Documento</th>
+                        <th scope="col" class="numero">Copago bloqueado</th>
+                        <th scope="col">Historia clinica</th>
+                        <th scope="col">Admision</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var admision in Filtradas)
+                    {
+                        <tr @key="admision.AdmisionId">
+                            <td>
+                                <div class="celda-principal">
+                                    @admision.FechaAdmisionUtc.ToLocalTime().ToString("dd/MM/yyyy")
+                                </div>
+                                <div class="celda-secundaria">
+                                    @admision.FechaAdmisionUtc.ToLocalTime().ToString("HH:mm:ss")
+                                </div>
+                            </td>
+                            <td>
+                                <div class="celda-principal">@admision.NumeroDocumento</div>
+                                <div class="celda-secundaria">@DescribirTipo(admision.TipoDocumento)</div>
+                            </td>
+                            <td class="numero">@FormatearMoneda(admision.ValorCopago)</td>
+                            <td>
+                                <span class="etiqueta @ClaseEstado(admision.Estado)">
+                                    @TextoEstado(admision.Estado)
+                                </span>
+                            </td>
+                            <td class="mono">@admision.AdmisionId.ToString()[..8]</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    private const int MaximoRegistros = 200;
+
+    private readonly List<AdmisionResumen> _admisiones = [];
+
+    private string _busqueda = string.Empty;
+    private string _filtroEstado = string.Empty;
+    private bool _cargando = true;
+
+    /// <summary>
+    /// Filtrado en memoria sobre un tope acotado de registros. Para volumenes
+    /// de produccion esto se moveria al servidor con paginacion por keyset;
+    /// aqui el tope de 200 mantiene la respuesta instantanea sin complicar la PoC.
+    /// </summary>
+    private List<AdmisionResumen> Filtradas =>
+        _admisiones
+            .Where(a => string.IsNullOrWhiteSpace(_busqueda)
+                || a.NumeroDocumento.Contains(_busqueda.Trim(), StringComparison.OrdinalIgnoreCase))
+            .Where(a => string.IsNullOrEmpty(_filtroEstado) || a.Estado == _filtroEstado)
+            .ToList();
+
+    protected override async Task OnInitializedAsync() => await RecargarAsync();
+
+    private async Task RecargarAsync()
+    {
+        _cargando = true;
+
+        try
+        {
+            // Ambito de vida corta: el DbContext no sobrevive a la operacion.
+            using var scope = ScopeFactory.CreateScope();
+            var consultas = scope.ServiceProvider.GetRequiredService<IAdmisionesQuery>();
+
+            var resultado = await consultas.ObtenerRecientesAsync(
+                MaximoRegistros,
+                CancellationToken.None);
+
+            _admisiones.Clear();
+            _admisiones.AddRange(resultado);
+        }
+        finally
+        {
+            _cargando = false;
+        }
+    }
+
+    private void OnBuscar(ChangeEventArgs e) => _busqueda = e.Value?.ToString() ?? string.Empty;
+
+    private void OnFiltrarEstado(ChangeEventArgs e) => _filtroEstado = e.Value?.ToString() ?? string.Empty;
+
+    private static string FormatearMoneda(decimal valor) => $"$ {valor:N0}";
+
+    private static string DescribirTipo(string tipo) => tipo switch
+    {
+        "CC" => "Cedula de ciudadania",
+        "CE" => "Cedula de extranjeria",
+        "TI" => "Tarjeta de identidad",
+        "RC" => "Registro civil",
+        "PA" => "Pasaporte",
+        _ => tipo
+    };
+
+    private static string ClaseEstado(string estado) => estado switch
+    {
+        "Sincronizada" => "etiqueta--sincronizada",
+        "PendienteSincronizacion" => "etiqueta--pendiente",
+        "FallidaSincronizacion" => "etiqueta--fallida",
+        _ => "etiqueta--neutra"
+    };
+
+    private static string TextoEstado(string estado) => estado switch
+    {
+        "Sincronizada" => "Sincronizada",
+        "PendienteSincronizacion" => "Pendiente",
+        "FallidaSincronizacion" => "Requiere conciliacion",
+        _ => estado
+    };
+}

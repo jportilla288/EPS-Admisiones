@@ -1,0 +1,109 @@
+@page "/"
+
+<PageTitle>Modulo de admisiones &middot; EPS Salud Integral</PageTitle>
+
+<section class="portada">
+    <h1>Admision de pacientes</h1>
+    <p>
+        Cada admision recibe una historia clinica completa en estandar FHIR/HL7 y debe
+        generar, en el mismo acto, un registro transaccional que bloquee el copago del
+        afiliado. Son dos almacenes distintos y una sola verdad.
+    </p>
+    <div class="acciones">
+        <a class="boton boton--primario" href="admisiones/nueva">Registrar una admision</a>
+        <a class="boton boton--secundario" href="admisiones">Consultar admisiones</a>
+    </div>
+</section>
+
+<div class="tarjetas">
+    <a class="tarjeta" href="admisiones/nueva">
+        <span class="tarjeta__titulo">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 5v14M5 12h14" />
+            </svg>
+            Registrar admision
+        </span>
+        <p class="tarjeta__texto">
+            Formulario de ingreso con validacion. Muestra el documento FHIR que se
+            genera antes de enviarlo al servidor.
+        </p>
+    </a>
+
+    <a class="tarjeta" href="admisiones">
+        <span class="tarjeta__titulo">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 6h18M3 12h18M3 18h18" />
+            </svg>
+            Consultar admisiones
+        </span>
+        <p class="tarjeta__texto">
+            Listado con busqueda por documento y filtro por estado de sincronizacion
+            de la historia clinica.
+        </p>
+    </a>
+
+    <a class="tarjeta" href="dashboard">
+        <span class="tarjeta__titulo">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+            </svg>
+            Monitoreo en vivo
+        </span>
+        <p class="tarjeta__texto">
+            Tablero de auditoria que se actualiza solo, sin sondeo ni recarga de
+            pagina, conforme entran las admisiones.
+        </p>
+    </a>
+</div>
+
+<section class="panel" style="margin-top:1.5rem">
+    <header class="panel__encabezado">
+        <span class="panel__titulo">Como se garantiza la consistencia entre los dos almacenes</span>
+        <span class="conexion" style="border-radius:var(--radio-sm)">Patron Outbox</span>
+    </header>
+    <div class="panel__cuerpo">
+        <p class="pagina__descripcion" style="margin-bottom:0.9rem">
+            En lugar de escribir en MongoDB y despues en SQL Server &mdash;dos escrituras
+            remotas que pueden divergir&mdash;, se invierte el orden: una transaccion local
+            garantiza la admision, y la propagacion al almacen documental queda prometida
+            dentro de esa misma transaccion.
+        </p>
+
+        <div class="flujo">
+            <div class="flujo__paso">
+                <div class="flujo__numero">PASO 1</div>
+                <div class="flujo__texto">
+                    Llega el documento FHIR. El dominio valida el documento del paciente
+                    y el valor del copago.
+                </div>
+            </div>
+            <div class="flujo__paso">
+                <div class="flujo__numero">PASO 2</div>
+                <div class="flujo__texto">
+                    Una sola transaccion en SQL Server: paciente, atencion, admision y
+                    mensaje de Outbox.
+                </div>
+            </div>
+            <div class="flujo__paso">
+                <div class="flujo__numero">PASO 3</div>
+                <div class="flujo__texto">
+                    Un proceso en segundo plano lee el Outbox y hace upsert idempotente
+                    en MongoDB, con reintentos.
+                </div>
+            </div>
+            <div class="flujo__paso">
+                <div class="flujo__numero">PASO 4</div>
+                <div class="flujo__texto">
+                    Confirmada la sincronizacion, la admision se emite al tablero de
+                    monitoreo en tiempo real.
+                </div>
+            </div>
+        </div>
+
+        <p class="pagina__descripcion" style="margin-top:1.1rem">
+            Si SQL Server falla, no se admitio a nadie. Si MongoDB cae, la admision ya
+            esta garantizada y el copago bloqueado: el Outbox reintenta hasta que vuelva.
+            El estado inconsistente deja de ser posible por construccion.
+        </p>
+    </div>
+</section>

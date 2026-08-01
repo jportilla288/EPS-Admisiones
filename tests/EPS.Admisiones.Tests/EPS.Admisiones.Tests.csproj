@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Tests del caso de uso SIN bases de datos: se usan dobles de prueba que
+    implementan los puertos. Ese es el beneficio concreto de la arquitectura
+    hexagonal en esta prueba, no la cantidad de carpetas.
+  -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>EPS.Admisiones.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\EPS.Admisiones.Application\EPS.Admisiones.Application.csproj" />
+    <ProjectReference Include="..\..\src\EPS.Admisiones.Domain\EPS.Admisiones.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

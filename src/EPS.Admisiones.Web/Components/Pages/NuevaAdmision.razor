@@ -1,0 +1,307 @@
+@page "/admisiones/nueva"
+@rendermode InteractiveServer
+
+@using System.ComponentModel.DataAnnotations
+@using System.Text.Json
+@using EPS.Admisiones.Application.UseCases.AdmitirPaciente
+@using EPS.Admisiones.Domain.Exceptions
+
+@inject IServiceScopeFactory ScopeFactory
+@inject ILogger<NuevaAdmision> Logger
+
+@* ---------------------------------------------------------------------------
+   Adaptador de entrada alternativo al controlador REST: invoca EL MISMO caso de
+   uso (IAdmitirPacienteUseCase) en proceso, sin dar un rodeo por HTTP. Esa es
+   la ventaja concreta de tener el caso de uso detras de un puerto de entrada.
+
+   Igual que en el dashboard, el caso de uso se resuelve en un ambito de vida
+   corta y no por inyeccion directa: es Scoped, y en Blazor Server el ambito
+   vive lo que vive el circuito.
+   --------------------------------------------------------------------------- *@
+
+<PageTitle>Registrar admision &middot; EPS</PageTitle>
+
+<nav class="migas" aria-label="Ruta de navegacion">
+    <a href="">Inicio</a><span>/</span>Registrar admision
+</nav>
+
+<header class="pagina__encabezado">
+    <div>
+        <h1>Nueva admision</h1>
+        <p class="pagina__descripcion">
+            Los datos se ensamblan en un documento FHIR/HL7 que se guarda integro
+            en MongoDB. De el se extraen el documento del paciente y el copago
+            hacia el registro transaccional en SQL Server.
+        </p>
+    </div>
+</header>
+
+@if (_resultado is { } resultado)
+{
+    <div class="aviso aviso--exito" role="status" style="margin-bottom:1.25rem">
+        <strong>Admision registrada</strong>
+        <span class="aviso__cuerpo">
+            Identificador <code>@resultado.AdmisionId</code> en estado
+            <strong>@resultado.Estado</strong>.
+            La historia clinica se esta sincronizando con MongoDB;
+            aparecera en el <a href="dashboard">dashboard</a> en unos segundos.
+        </span>
+    </div>
+}
+
+@if (_error is { Length: > 0 } error)
+{
+    <div class="aviso aviso--error" role="alert" style="margin-bottom:1.25rem">
+        <strong>No se pudo registrar la admision</strong>
+        <span class="aviso__cuerpo">@error</span>
+    </div>
+}
+
+<section class="panel">
+    <header class="panel__encabezado">
+        <span class="panel__titulo">Datos de la admision</span>
+    </header>
+
+    <div class="panel__cuerpo">
+        <EditForm Model="_modelo" OnValidSubmit="AdmitirAsync" class="formulario">
+            <DataAnnotationsValidator />
+
+            <div class="campos">
+                <div class="campo">
+                    <label for="tipoDocumento">Tipo de documento <span class="requerido">*</span></label>
+                    <InputSelect id="tipoDocumento" @bind-Value="_modelo.TipoDocumento">
+                        <option value="CC">Cedula de ciudadania</option>
+                        <option value="CE">Cedula de extranjeria</option>
+                        <option value="TI">Tarjeta de identidad</option>
+                        <option value="RC">Registro civil</option>
+                        <option value="PA">Pasaporte</option>
+                    </InputSelect>
+                </div>
+
+                <div class="campo">
+                    <label for="numeroDocumento">Numero de documento <span class="requerido">*</span></label>
+                    <InputText id="numeroDocumento" @bind-Value="_modelo.NumeroDocumento" autocomplete="off" />
+                    <ValidationMessage For="() => _modelo.NumeroDocumento" />
+                </div>
+
+                <div class="campo">
+                    <label for="nombre">Nombres <span class="requerido">*</span></label>
+                    <InputText id="nombre" @bind-Value="_modelo.Nombre" autocomplete="off" />
+                    <ValidationMessage For="() => _modelo.Nombre" />
+                </div>
+
+                <div class="campo">
+                    <label for="apellido">Apellidos <span class="requerido">*</span></label>
+                    <InputText id="apellido" @bind-Value="_modelo.Apellido" autocomplete="off" />
+                    <ValidationMessage For="() => _modelo.Apellido" />
+                </div>
+
+                <div class="campo">
+                    <label for="copago">Valor del copago (COP) <span class="requerido">*</span></label>
+                    <InputNumber id="copago" @bind-Value="_modelo.ValorCopago" step="0.01" />
+                    <span class="ayuda">Se bloquea en la cuenta del afiliado.</span>
+                    <ValidationMessage For="() => _modelo.ValorCopago" />
+                </div>
+
+                <div class="campo">
+                    <label for="servicio">Servicio</label>
+                    <InputText id="servicio" @bind-Value="_modelo.Servicio" autocomplete="off" />
+                </div>
+
+                <div class="campo campo--ancho">
+                    <label for="diagnostico">Diagnostico principal (CIE-10)</label>
+                    <InputText id="diagnostico" @bind-Value="_modelo.Diagnostico" autocomplete="off" />
+                    <span class="ayuda">Codigo y descripcion, p. ej. "J06.9 - Infeccion aguda de vias respiratorias".</span>
+                </div>
+
+                <div class="campo campo--casilla campo--ancho">
+                    <InputCheckbox id="auditoria" @bind-Value="_modelo.RequiereAuditoria" />
+                    <label for="auditoria">Requiere auditoria (entra en el reporte mensual)</label>
+                </div>
+            </div>
+
+            <div class="acciones">
+                <button type="submit" class="boton boton--primario" disabled="@_enviando">
+                    @if (_enviando)
+                    {
+                        <span class="girador" aria-hidden="true"></span>
+                        <span>Registrando...</span>
+                    }
+                    else
+                    {
+                        <span>Admitir paciente</span>
+                    }
+                </button>
+
+                <button type="button" class="boton boton--secundario" @onclick="Limpiar" disabled="@_enviando">
+                    Limpiar
+                </button>
+
+                <a class="boton boton--secundario" href="dashboard">Ver dashboard</a>
+            </div>
+        </EditForm>
+    </div>
+</section>
+
+<section class="panel" style="margin-top:1.25rem">
+    <header class="panel__encabezado">
+        <span class="panel__titulo">Documento FHIR que se enviara</span>
+        <span class="conexion">Vista previa en vivo</span>
+    </header>
+    <div class="panel__cuerpo">
+        <div class="campo">
+            <textarea readonly rows="14" aria-label="Vista previa del documento FHIR">@VistaPreviaJson()</textarea>
+            <span class="ayuda">
+                Este documento completo se persiste en MongoDB. Solo el documento del
+                paciente y el valor del copago se proyectan al modelo relacional.
+            </span>
+        </div>
+    </div>
+</section>
+
+@code {
+    private readonly ModeloAdmision _modelo = new();
+
+    private bool _enviando;
+    private string? _error;
+    private AdmitirPacienteResult? _resultado;
+
+    private async Task AdmitirAsync()
+    {
+        _enviando = true;
+        _error = null;
+        _resultado = null;
+
+        try
+        {
+            var payload = ConstruirDocumentoFhir();
+
+            using var scope = ScopeFactory.CreateScope();
+            var caso = scope.ServiceProvider.GetRequiredService<IAdmitirPacienteUseCase>();
+
+            // Clave de idempotencia por envio: si el usuario hace doble clic o
+            // la red reintenta, no se cobra dos veces el copago.
+            _resultado = await caso.EjecutarAsync(
+                new AdmitirPacienteCommand(payload, Guid.NewGuid()),
+                CancellationToken.None);
+
+            _modelo.Limpiar();
+        }
+        catch (DomainException ex)
+        {
+            // Regla de negocio violada: es culpa del dato, no del sistema.
+            _error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Fallo inesperado al admitir un paciente desde la interfaz.");
+            _error = "Ocurrio un error tecnico. Revisa que SQL Server este disponible e intenta de nuevo.";
+        }
+        finally
+        {
+            _enviando = false;
+        }
+    }
+
+    private void Limpiar()
+    {
+        _modelo.Limpiar();
+        _error = null;
+        _resultado = null;
+    }
+
+    /// <summary>
+    /// Ensambla el documento clinico con la misma forma que consume
+    /// <see cref="ExtractorDatosFacturables"/>.
+    /// </summary>
+    private JsonElement ConstruirDocumentoFhir()
+    {
+        var documento = new
+        {
+            resourceType = "Bundle",
+            paciente = new
+            {
+                tipoDocumento = _modelo.TipoDocumento,
+                numeroDocumento = _modelo.NumeroDocumento?.Trim(),
+                nombre = _modelo.Nombre?.Trim(),
+                apellido = _modelo.Apellido?.Trim()
+            },
+            copago = new
+            {
+                valor = _modelo.ValorCopago,
+                moneda = "COP"
+            },
+            encuentro = new
+            {
+                clase = "ambulatorio",
+                requiereAuditoria = _modelo.RequiereAuditoria,
+                servicio = string.IsNullOrWhiteSpace(_modelo.Servicio)
+                    ? "Consulta externa"
+                    : _modelo.Servicio.Trim(),
+                fechaIngreso = DateTime.UtcNow,
+                // Tipo explicito en ambas ramas: un ternario con expresion de
+                // coleccion no puede inferir el tipo de destino.
+                diagnosticos = string.IsNullOrWhiteSpace(_modelo.Diagnostico)
+                    ? Array.Empty<object>()
+                    : new object[]
+                    {
+                        new { descripcion = _modelo.Diagnostico.Trim(), sistema = "CIE-10" }
+                    }
+            }
+        };
+
+        return JsonSerializer.SerializeToElement(documento, OpcionesJson);
+    }
+
+    private string VistaPreviaJson() =>
+        JsonSerializer.Serialize(ConstruirDocumentoFhir(), OpcionesJson);
+
+    private static readonly JsonSerializerOptions OpcionesJson =
+        new(JsonSerializerDefaults.Web) { WriteIndented = true };
+
+    /// <summary>
+    /// Modelo de formulario con validacion declarativa. Es intencionalmente
+    /// distinto del comando de aplicacion: valida FORMA (campos obligatorios,
+    /// rangos), mientras que el dominio valida REGLAS DE NEGOCIO. Duplicar la
+    /// validacion aqui da retroalimentacion inmediata sin que el dominio pierda
+    /// su papel de ultima linea de defensa.
+    /// </summary>
+    private sealed class ModeloAdmision
+    {
+        [Required(ErrorMessage = "Selecciona el tipo de documento.")]
+        public string TipoDocumento { get; set; } = "CC";
+
+        [Required(ErrorMessage = "El numero de documento es obligatorio.")]
+        [RegularExpression("^[a-zA-Z0-9]{1,20}$",
+            ErrorMessage = "Solo letras y digitos, maximo 20 caracteres.")]
+        public string? NumeroDocumento { get; set; }
+
+        [Required(ErrorMessage = "Los nombres son obligatorios.")]
+        [StringLength(100)]
+        public string? Nombre { get; set; }
+
+        [Required(ErrorMessage = "Los apellidos son obligatorios.")]
+        [StringLength(100)]
+        public string? Apellido { get; set; }
+
+        [Range(0, 99_999_999, ErrorMessage = "El copago no puede ser negativo.")]
+        public decimal ValorCopago { get; set; } = 25000m;
+
+        public string? Servicio { get; set; } = "Consulta externa";
+
+        public string? Diagnostico { get; set; }
+
+        public bool RequiereAuditoria { get; set; } = true;
+
+        public void Limpiar()
+        {
+            NumeroDocumento = null;
+            Nombre = null;
+            Apellido = null;
+            ValorCopago = 25000m;
+            Servicio = "Consulta externa";
+            Diagnostico = null;
+            RequiereAuditoria = true;
+        }
+    }
+}

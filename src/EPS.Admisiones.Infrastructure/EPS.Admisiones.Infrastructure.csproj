@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Infrastructure: ADAPTADORES. Implementa los puertos de Application.
+    Aqui viven EF Core, el driver de Mongo y Polly. Nadie depende de este
+    proyecto salvo el host (Web) para registrar el contenedor de DI.
+  -->
+  <PropertyGroup>
+    <RootNamespace>EPS.Admisiones.Infrastructure</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\EPS.Admisiones.Application\EPS.Admisiones.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.10" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.10" />
+    <!-- Microsoft.Extensions.Hosting (no solo Abstractions): BackgroundService vive
+         en Abstractions, pero OptionsBuilder.ValidateOnStart() esta en el paquete
+         completo. Hosting trae Abstractions de forma transitiva. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="8.0.0" />
+    <!-- Aporta OptionsBuilder.ValidateDataAnnotations(): valida los [Required] de
+         MongoOptions al arrancar, para fallar rapido si falta configuracion. -->
+    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" Version="8.0.0" />
+    <PackageReference Include="MongoDB.Driver" Version="2.28.0" />
+    <PackageReference Include="Polly.Core" Version="8.4.2" />
+    <PackageReference Include="Polly.Extensions" Version="8.4.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Necesario para 'dotnet ef migrations'. No se propaga al host. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.10">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <!-- Habilita los comandos Add-Migration / Update-Database en la Consola del
+         Administrador de paquetes de Visual Studio. Solo herramienta de desarrollo. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.10">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Domain: el centro de la arquitectura hexagonal.
+    Regla no negociable: CERO referencias a otros proyectos y CERO paquetes NuGet
+    de infraestructura. Si alguna vez necesita un using de EF Core o Mongo,
+    la abstraccion esta mal ubicada.
+  -->
+  <PropertyGroup>
+    <RootNamespace>EPS.Admisiones.Domain</RootNamespace>
+  </PropertyGroup>
+
+</Project>

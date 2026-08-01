@@ -1,0 +1,21 @@
+<Project>
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>12.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!--
+      InvariantGlobalization queda en FALSE deliberadamente.
+      Microsoft.Data.SqlClient resuelve sus mensajes de error con la cultura
+      en-us al abrir la conexion; en modo invariante lanza
+      CultureNotFoundException antes siquiera de conectarse.
+      Ademas, una EPS colombiana necesita formato es-CO para montos y fechas.
+    -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+</Project>

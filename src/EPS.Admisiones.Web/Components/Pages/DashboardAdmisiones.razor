@@ -1,0 +1,286 @@
+@page "/dashboard"
+@rendermode InteractiveServer
+
+@using EPS.Admisiones.Application.Contracts
+@using EPS.Admisiones.Application.Ports
+@using EPS.Admisiones.Infrastructure.Messaging
+
+@* Sin esta declaracion, Blazor jamas llama a DisposeAsync y la suscripcion
+   al singleton sobrevive al circuito: la fuga que pide detectar la Parte 3. *@
+@implements IAsyncDisposable
+
+@inject AdmisionEventBus EventBus
+@inject IServiceScopeFactory ScopeFactory
+@inject ILogger<DashboardAdmisiones> Logger
+
+@* ---------------------------------------------------------------------------
+   PARTE 3: dashboard en tiempo real.
+
+   Los tres puntos que evalua la prueba:
+     1. Suscripcion: se inyecta el bus (singleton) y el componente se registra
+        como suscriptor en OnInitializedAsync.
+     2. Thread-safety: el evento llega en el hilo del BackgroundService, NO en
+        el del renderizador, asi que toda mutacion de estado + StateHasChanged
+        se despacha con InvokeAsync.
+     3. Liberacion: IAsyncDisposable da de baja el manejador. Sin esto, el
+        singleton conservaria una referencia al componente y su circuito
+        quedaria vivo indefinidamente.
+
+   Detalle adicional de escalamiento (Parte 1): NO se inyecta IAdmisionesQuery
+   directamente. Es un servicio Scoped y en Blazor Server el ambito dura lo que
+   dura el CIRCUITO, asi que inyectarlo mantendria un DbContext y su conexion
+   abiertos durante horas por cada usuario. Con 5.000 usuarios eso agota el pool
+   de conexiones de SQL Server. En su lugar se crea un ambito por operacion.
+   --------------------------------------------------------------------------- *@
+
+<PageTitle>Monitoreo en vivo &middot; EPS</PageTitle>
+
+<nav class="migas" aria-label="Ruta de navegacion">
+    <a href="">Inicio</a><span>/</span>Monitoreo en vivo
+</nav>
+
+<header class="pagina__encabezado">
+    <div>
+        <h1>Monitoreo en vivo</h1>
+        <p class="pagina__descripcion">
+            Auditoria en tiempo real. Solo se listan las admisiones ya consistentes
+            en SQL Server y MongoDB.
+        </p>
+    </div>
+
+    <span class="conexion @(_conectado ? "conexion--viva" : "conexion--muerta")"
+          role="status"
+          aria-live="polite">
+        <span class="conexion__punto"></span>
+        @(_conectado ? "Escuchando cambios" : "Desconectado")
+    </span>
+</header>
+
+<section class="indicadores" aria-label="Indicadores operativos">
+    <article class="indicador">
+        <span class="indicador__etiqueta">Admisiones hoy</span>
+        <span class="indicador__valor">@_metricas.AdmisionesHoy</span>
+        <span class="indicador__nota">Desde las 00:00 UTC</span>
+    </article>
+
+    <article class="indicador">
+        <span class="indicador__etiqueta">Copago bloqueado</span>
+        <span class="indicador__valor">@FormatearMoneda(_metricas.CopagoBloqueadoHoy)</span>
+        <span class="indicador__nota">Acumulado del dia</span>
+    </article>
+
+    <article class="indicador @(_metricas.PendientesSincronizacion > 0 ? "indicador--alerta" : null)">
+        <span class="indicador__etiqueta">Pendientes de sincronizar</span>
+        <span class="indicador__valor">@_metricas.PendientesSincronizacion</span>
+        <span class="indicador__nota">Historia clinica en camino a MongoDB</span>
+    </article>
+
+    <article class="indicador @(_metricas.FallidasSincronizacion > 0 ? "indicador--error" : null)">
+        <span class="indicador__etiqueta">Requieren conciliacion</span>
+        <span class="indicador__valor">@_metricas.FallidasSincronizacion</span>
+        <span class="indicador__nota">Outbox agoto los reintentos</span>
+    </article>
+</section>
+
+<section class="panel">
+    <header class="panel__encabezado">
+        <span class="panel__titulo">Ultimas admisiones</span>
+        <span class="conexion">
+            @if (_ultimaActualizacionUtc is { } marca)
+            {
+                <span>Ultimo evento @marca.ToLocalTime().ToString("HH:mm:ss")</span>
+            }
+            else
+            {
+                <span>@_admisiones.Count en pantalla</span>
+            }
+        </span>
+    </header>
+
+    @if (_cargando)
+    {
+        <div class="panel__cuerpo" role="status" aria-live="polite">
+            @for (var i = 0; i < 4; i++)
+            {
+                <div class="esqueleto" style="margin-bottom:0.75rem;width:@(100 - i * 8)%"></div>
+            }
+        </div>
+    }
+    else if (_admisiones.Count == 0)
+    {
+        <div class="vacio">
+            <div class="vacio__icono">
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                </svg>
+            </div>
+            <p class="vacio__titulo">Sin admisiones registradas</p>
+            <p>
+                Registra una desde <a href="admisiones/nueva">Nueva admision</a>
+                o envia un <code>POST /api/admisiones</code>.
+                Aparecera aqui sin recargar la pagina.
+            </p>
+        </div>
+    }
+    else
+    {
+        <div class="tabla-envoltura">
+            <table class="tabla">
+                <thead>
+                    <tr>
+                        <th scope="col">Hora</th>
+                        <th scope="col">Documento</th>
+                        <th scope="col" class="numero">Copago</th>
+                        <th scope="col">Estado</th>
+                        <th scope="col">Admision</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var admision in _admisiones)
+                    {
+                        @* La clave estable evita que Blazor recree filas ya
+                           renderizadas al insertar una nueva al principio. *@
+                        <tr @key="admision.AdmisionId"
+                            class="@(admision.AdmisionId == _resaltada ? "fila--nueva" : null)">
+                            <td>@admision.FechaAdmisionUtc.ToLocalTime().ToString("HH:mm:ss")</td>
+                            <td>@admision.TipoDocumento @admision.NumeroDocumento</td>
+                            <td class="numero">@FormatearMoneda(admision.ValorCopago)</td>
+                            <td>
+                                <span class="etiqueta @ClaseEstado(admision.Estado)">
+                                    @TextoEstado(admision.Estado)
+                                </span>
+                            </td>
+                            <td class="mono">@admision.AdmisionId.ToString()[..8]</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    private const int MaximoFilasEnPantalla = 50;
+
+    private readonly List<AdmisionResumen> _admisiones = [];
+
+    private MetricasAdmisiones _metricas = MetricasAdmisiones.Vacias();
+    private bool _cargando = true;
+    private bool _conectado;
+    private bool _suscrito;
+    private Guid? _resaltada;
+    private DateTime? _ultimaActualizacionUtc;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // 1. Estado inicial: sin esto el auditor veria la tabla vacia hasta la
+        //    siguiente admision.
+        await RecargarAsync();
+        _cargando = false;
+
+        // 2. Suscripcion al flujo en vivo. El flag evita dar de baja un
+        //    manejador que nunca llego a registrarse.
+        EventBus.AdmisionRegistrada += OnAdmisionRegistradaAsync;
+        _suscrito = true;
+        _conectado = true;
+    }
+
+    /// <summary>
+    /// Ambito propio y de vida corta: el DbContext se crea, se usa y se libera.
+    /// Nunca queda retenido por la duracion del circuito.
+    /// </summary>
+    private async Task RecargarAsync()
+    {
+        using var scope = ScopeFactory.CreateScope();
+        var consultas = scope.ServiceProvider.GetRequiredService<IAdmisionesQuery>();
+
+        var recientes = await consultas.ObtenerRecientesAsync(
+            MaximoFilasEnPantalla,
+            CancellationToken.None);
+
+        _metricas = await consultas.ObtenerMetricasAsync(CancellationToken.None);
+
+        _admisiones.Clear();
+        _admisiones.AddRange(recientes);
+    }
+
+    /// <summary>
+    /// Se ejecuta en el hilo del despachador del Outbox, fuera del contexto de
+    /// sincronizacion del renderizador. TODO lo que toque estado del componente
+    /// tiene que ir dentro de InvokeAsync.
+    /// </summary>
+    private Task OnAdmisionRegistradaAsync(AdmisionResumen admision) =>
+        InvokeAsync(() =>
+        {
+            // Idempotencia en la UI: el Outbox entrega al menos una vez, asi que
+            // la misma admision puede llegar dos veces.
+            if (_admisiones.Any(a => a.AdmisionId == admision.AdmisionId))
+            {
+                return;
+            }
+
+            _admisiones.Insert(0, admision);
+
+            // Cota dura de memoria por circuito: con 5.000 auditores conectados,
+            // una lista sin limite multiplica la RAM del servidor por 5.000.
+            if (_admisiones.Count > MaximoFilasEnPantalla)
+            {
+                _admisiones.RemoveRange(
+                    MaximoFilasEnPantalla,
+                    _admisiones.Count - MaximoFilasEnPantalla);
+            }
+
+            // Los indicadores se actualizan en memoria en lugar de volver a
+            // consultar la base: con admisiones llegando cada segundo, sondear
+            // SQL en cada evento multiplicaria la carga por el numero de usuarios.
+            _metricas = _metricas with
+            {
+                AdmisionesHoy = _metricas.AdmisionesHoy + 1,
+                CopagoBloqueadoHoy = _metricas.CopagoBloqueadoHoy + admision.ValorCopago
+            };
+
+            _resaltada = admision.AdmisionId;
+            _ultimaActualizacionUtc = DateTime.UtcNow;
+
+            StateHasChanged();
+        });
+
+    private static string FormatearMoneda(decimal valor) => $"$ {valor:N0}";
+
+    private static string ClaseEstado(string estado) => estado switch
+    {
+        "Sincronizada" => "etiqueta--sincronizada",
+        "PendienteSincronizacion" => "etiqueta--pendiente",
+        "FallidaSincronizacion" => "etiqueta--fallida",
+        _ => "etiqueta--neutra"
+    };
+
+    private static string TextoEstado(string estado) => estado switch
+    {
+        "Sincronizada" => "Sincronizada",
+        "PendienteSincronizacion" => "Pendiente",
+        "FallidaSincronizacion" => "Fallida",
+        _ => estado
+    };
+
+    /// <summary>
+    /// Se invoca cuando el usuario cierra la pestana, navega a otra pagina o el
+    /// circuito expira. Es lo que rompe la referencia del singleton hacia este
+    /// componente y permite al GC recogerlo.
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        if (_suscrito)
+        {
+            EventBus.AdmisionRegistrada -= OnAdmisionRegistradaAsync;
+            _suscrito = false;
+        }
+
+        _conectado = false;
+        _admisiones.Clear();
+
+        Logger.LogDebug("Dashboard de admisiones liberado; suscripcion dada de baja.");
+
+        await ValueTask.CompletedTask;
+    }
+}

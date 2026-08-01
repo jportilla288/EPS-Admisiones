@@ -1,0 +1,61 @@
+name: eps-admisiones
+
+# Levanta SOLO las dependencias de datos. La aplicacion se ejecuta con
+# `dotnet run` para poder depurarla; ver README.md.
+services:
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: eps-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Local_Dev_2026!"
+      MSSQL_PID: "Developer"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    healthcheck:
+      # Comprueba que el motor responde a consultas, no solo que el puerto abrio.
+      test:
+        [
+          "CMD-SHELL",
+          "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -C -Q 'SELECT 1' || exit 1"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  mongo:
+    image: mongo:7
+    container_name: eps-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  # Opcional: interfaz web para inspeccionar las historias clinicas guardadas.
+  mongo-express:
+    image: mongo-express:1.0.2
+    container_name: eps-mongo-express
+    depends_on:
+      mongo:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_URL: "mongodb://mongo:27017"
+      ME_CONFIG_BASICAUTH: "false"
+    profiles:
+      - herramientas
+
+volumes:
+  sqlserver-data:
+  mongo-data:

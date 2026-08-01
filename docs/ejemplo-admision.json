@@ -1,0 +1,62 @@
+{
+  "resourceType": "Bundle",
+  "identificadorMensaje": "urn:uuid:8a1f2c44-9e0b-4c3a-9f5d-1b7e6a2d3c40",
+  "paciente": {
+    "tipoDocumento": "CC",
+    "numeroDocumento": "1098765432",
+    "nombre": "Ana Maria",
+    "apellido": "Portilla",
+    "fechaNacimiento": "1991-04-17",
+    "sexo": "F",
+    "regimen": "contributivo",
+    "contacto": {
+      "telefono": "+57 300 000 0000",
+      "ciudad": "Bucaramanga"
+    }
+  },
+  "copago": {
+    "valor": 25000.00,
+    "moneda": "COP",
+    "nivelIngreso": 2
+  },
+  "encuentro": {
+    "clase": "ambulatorio",
+    "requiereAuditoria": true,
+    "servicio": "Consulta externa",
+    "fechaIngreso": "2026-07-31T14:30:00Z",
+    "prestador": {
+      "codigo": "680010123401",
+      "nombre": "IPS Central Bucaramanga"
+    },
+    "diagnosticos": [
+      {
+        "codigo": "J06.9",
+        "sistema": "CIE-10",
+        "descripcion": "Infeccion aguda de las vias respiratorias superiores, no especificada",
+        "tipo": "principal"
+      },
+      {
+        "codigo": "R50.9",
+        "sistema": "CIE-10",
+        "descripcion": "Fiebre, no especificada",
+        "tipo": "relacionado"
+      }
+    ],
+    "signosVitales": {
+      "presionArterial": "120/80",
+      "frecuenciaCardiaca": 78,
+      "frecuenciaRespiratoria": 16,
+      "temperaturaC": 37.8,
+      "saturacionO2": 97
+    },
+    "medicamentos": [
+      {
+        "codigo": "ACET500",
+        "descripcion": "Acetaminofen 500 mg",
+        "dosis": "1 tableta cada 8 horas",
+        "duracionDias": 5
+      }
+    ],
+    "notas": "Paciente refiere odinofagia y malestar general de 48 horas de evolucion."
+  }
+}

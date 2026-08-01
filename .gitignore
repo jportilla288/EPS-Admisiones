@@ -1,0 +1,44 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+TestResults/
+*.trx
+*.coverage
+coverage*.json
+coverage*.xml
+
+## Visual Studio / Rider / VS Code
+.vs/
+.idea/
+.vscode/
+*.swp
+
+## Secretos: NUNCA deben llegar al repositorio.
+## En local se usa `dotnet user-secrets`; en Azure, Key Vault.
+appsettings.*.local.json
+appsettings.Production.json
+secrets.json
+*.secrets.json
+*.pfx
+*.p12
+*.key
+*.env
+.env
+
+## Configuración local de la máquina (no aplica a otros equipos)
+.claude/settings.local.json
+
+## Registros
+*.log
+logs/
+
+## Sistema operativo
+.DS_Store
+Thumbs.db

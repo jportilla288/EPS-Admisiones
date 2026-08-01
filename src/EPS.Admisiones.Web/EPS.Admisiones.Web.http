@@ -1,0 +1,68 @@
+@host = http://localhost:5080
+
+### Admitir un paciente (payload FHIR simulado con datos anidados)
+POST {{host}}/api/admisiones
+Content-Type: application/json
+Idempotency-Key: 3f1c9a52-7d4b-4d2e-9a11-6c0f2b8e4d10
+
+{
+  "resourceType": "Bundle",
+  "paciente": {
+    "tipoDocumento": "CC",
+    "numeroDocumento": "1098765432",
+    "nombre": "Ana Maria",
+    "apellido": "Portilla"
+  },
+  "copago": {
+    "valor": 25000.00,
+    "moneda": "COP"
+  },
+  "encuentro": {
+    "clase": "ambulatorio",
+    "requiereAuditoria": true,
+    "servicio": "Consulta externa",
+    "diagnosticos": [
+      { "codigo": "J06.9", "descripcion": "Infeccion aguda de vias respiratorias superiores" }
+    ],
+    "signosVitales": {
+      "presionArterial": "120/80",
+      "frecuenciaCardiaca": 78,
+      "temperaturaC": 36.7
+    }
+  }
+}
+
+### Reintento con la MISMA Idempotency-Key: responde 200 y no duplica nada
+POST {{host}}/api/admisiones
+Content-Type: application/json
+Idempotency-Key: 3f1c9a52-7d4b-4d2e-9a11-6c0f2b8e4d10
+
+{
+  "resourceType": "Bundle",
+  "paciente": {
+    "tipoDocumento": "CC",
+    "numeroDocumento": "1098765432",
+    "nombre": "Ana Maria",
+    "apellido": "Portilla"
+  },
+  "copago": { "valor": 25000.00, "moneda": "COP" },
+  "encuentro": { "requiereAuditoria": true }
+}
+
+### Payload invalido: responde 422 con ProblemDetails, no 500
+POST {{host}}/api/admisiones
+Content-Type: application/json
+
+{
+  "resourceType": "Bundle",
+  "copago": { "valor": 1000 }
+}
+
+### Ultimas admisiones
+GET {{host}}/api/admisiones/recientes?cantidad=20
+
+### Reporte mensual de auditoria (version optimizada de la Parte 4)
+GET {{host}}/api/reportes/mensual?anio=2026&mes=7
+
+### Salud del servicio
+GET {{host}}/health
