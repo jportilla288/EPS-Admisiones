@@ -159,7 +159,9 @@
                                     @TextoEstado(admision.Estado)
                                 </span>
                             </td>
-                            <td class="mono">@admision.AdmisionId.ToString()[..8]</td>
+                            <td class="mono" title="@admision.AdmisionId">
+                                @admision.AdmisionId.ToString()[..8]
+                            </td>
                         </tr>
                     }
                 </tbody>

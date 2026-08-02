@@ -7,6 +7,7 @@
 @using EPS.Admisiones.Application.UseCases.ConsultarDetalleAdmision
 
 @inject IServiceScopeFactory ScopeFactory
+@inject IJSRuntime JS
 @inject ILogger<ConsultarAdmisiones> Logger
 
 @* Listado consultable de admisiones. A diferencia del monitoreo en vivo, esta
@@ -115,6 +116,7 @@
                     <tr>
                         <th scope="col">Fecha y hora</th>
                         <th scope="col">Afiliado</th>
+                        <th scope="col">Documento</th>
                         <th scope="col" class="numero">Copago bloqueado</th>
                         <th scope="col">Historia clinica</th>
                         <th scope="col">Admision</th>
@@ -141,10 +143,11 @@
                                     @admision.FechaAdmisionUtc.ToLocalTime().ToString("HH:mm:ss")
                                 </div>
                             </td>
+                            <td class="celda-principal">@NombreOAnonimo(admision)</td>
                             <td>
-                                <div class="celda-principal">@NombreOAnonimo(admision)</div>
+                                <div class="celda-principal">@admision.NumeroDocumento</div>
                                 <div class="celda-secundaria">
-                                    @admision.TipoDocumento @admision.NumeroDocumento
+                                    @DescribirTipo(admision.TipoDocumento)
                                 </div>
                             </td>
                             <td class="numero">@FormatearMoneda(admision.ValorCopago)</td>
@@ -153,7 +156,12 @@
                                     @TextoEstado(admision.Estado)
                                 </span>
                             </td>
-                            <td class="mono">@admision.AdmisionId.ToString()[..8]</td>
+                            @* Se trunca para que la tabla respire, pero el id
+                               completo queda accesible al pasar el cursor: es
+                               lo que se necesita para consultar la API. *@
+                            <td class="mono" title="@admision.AdmisionId">
+                                @admision.AdmisionId.ToString()[..8]
+                            </td>
                         </tr>
                     }
                 </tbody>
@@ -217,9 +225,30 @@
                         }
                     </dd>
                 </div>
-                <div class="campo">
+                @* Identificadores con boton de copia: son los que se pegan en
+                   Swagger (`GET /api/admisiones/{id}`) y en mongosh. Un tooltip
+                   no sirve aqui -- se lee pero no se puede copiar. *@
+                <div class="campo campo--ancho">
+                    <dt><label>Numero de admision</label></dt>
+                    <dd class="identificador">
+                        <code class="mono">@detalle.AdmisionId</code>
+                        <button type="button"
+                                class="boton boton--secundario boton--menudo"
+                                @onclick="() => CopiarAsync(detalle.AdmisionId.ToString(), nameof(detalle.AdmisionId))">
+                            @(_campoCopiado == nameof(detalle.AdmisionId) ? "Copiado" : "Copiar")
+                        </button>
+                    </dd>
+                </div>
+                <div class="campo campo--ancho">
                     <dt><label>Historia clinica (MongoDB)</label></dt>
-                    <dd class="mono">@detalle.HistoriaClinicaId</dd>
+                    <dd class="identificador">
+                        <code class="mono">@detalle.HistoriaClinicaId</code>
+                        <button type="button"
+                                class="boton boton--secundario boton--menudo"
+                                @onclick="() => CopiarAsync(detalle.HistoriaClinicaId, nameof(detalle.HistoriaClinicaId))">
+                            @(_campoCopiado == nameof(detalle.HistoriaClinicaId) ? "Copiado" : "Copiar")
+                        </button>
+                    </dd>
                 </div>
             </dl>
 
@@ -279,6 +308,7 @@
     private AdmisionDetalle? _detalle;
     private string? _historiaFormateada;
     private bool _cargandoDetalle;
+    private string? _campoCopiado;
 
     /// <summary>
     /// Filtrado en memoria sobre un tope acotado de registros. Para volumenes
@@ -365,6 +395,32 @@
     {
         _detalle = null;
         _historiaFormateada = null;
+        _campoCopiado = null;
+    }
+
+    /// <summary>
+    /// Copia un identificador al portapapeles.
+    ///
+    /// El acuse ("Copiado") NO se limpia con un temporizador a proposito: en
+    /// Blazor Server un Task.Delay seguido de StateHasChanged sigue corriendo
+    /// aunque el usuario cierre la pestana, y tocar un componente ya liberado
+    /// es exactamente la fuga que este proyecto evita en el dashboard. Se
+    /// limpia al copiar otro campo o al cerrar el detalle, que no cuesta nada.
+    /// </summary>
+    private async Task CopiarAsync(string valor, string campo)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", valor);
+            _campoCopiado = campo;
+        }
+        catch (JSException ex)
+        {
+            // El portapapeles exige un contexto seguro (https o localhost) y
+            // puede estar bloqueado por politica del navegador. El identificador
+            // sigue siendo seleccionable a mano, asi que no se interrumpe nada.
+            Logger.LogWarning(ex, "El navegador rechazo el acceso al portapapeles.");
+        }
     }
 
     /// <summary>

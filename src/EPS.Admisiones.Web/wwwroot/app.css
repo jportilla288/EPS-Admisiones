@@ -853,6 +853,30 @@ code {
     cursor: not-allowed;
 }
 
+/* Boton auxiliar que acompana a un dato, no una accion de pagina. */
+.boton--menudo {
+    padding: 0.22rem 0.55rem;
+    font-size: 0.75rem;
+}
+
+/* Identificador largo + su boton de copia: el codigo se puede encoger y
+   partir, el boton nunca. */
+.identificador {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.identificador code {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.identificador .boton {
+    flex: 0 0 auto;
+}
+
 .girador {
     width: 13px;
     height: 13px;
