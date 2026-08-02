@@ -61,6 +61,14 @@ Content-Type: application/json
 ### Ultimas admisiones
 GET {{host}}/api/admisiones/recientes?cantidad=20
 
+### Detalle completo: registro de SQL Server + historia clinica de MongoDB.
+### Es la unica consulta que lee de las DOS persistencias.
+### Sustituye el id por uno devuelto por la peticion anterior.
+GET {{host}}/api/admisiones/3f1c9a52-7d4b-4d2e-9a11-6c0f2b8e4d10
+
+### Admision inexistente: responde 404 con ProblemDetails
+GET {{host}}/api/admisiones/00000000-0000-0000-0000-000000000099
+
 ### Reporte mensual de auditoria (version optimizada de la Parte 4)
 GET {{host}}/api/reportes/mensual?anio=2026&mes=7
 

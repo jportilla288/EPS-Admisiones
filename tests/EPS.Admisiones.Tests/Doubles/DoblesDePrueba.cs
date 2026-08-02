@@ -1,3 +1,4 @@
+using EPS.Admisiones.Application.Contracts;
 using EPS.Admisiones.Application.Ports;
 using EPS.Admisiones.Domain.Admisiones;
 using EPS.Admisiones.Domain.Admisiones.ValueObjects;
@@ -122,4 +123,60 @@ public sealed class RelojFijo : IRelojSistema
     public RelojFijo(DateTime utcNow) => UtcNow = utcNow;
 
     public DateTime UtcNow { get; }
+}
+
+/// <summary>
+/// Doble del lado lectura sobre SQL Server. Solo implementa lo que consume el
+/// caso de uso de detalle; el resto lanza para que un uso no previsto sea un
+/// fallo ruidoso y no un silencio.
+/// </summary>
+public sealed class AdmisionesQueryFalso : IAdmisionesQuery
+{
+    public AdmisionRegistro? Registro { get; set; }
+
+    public Task<AdmisionRegistro?> ObtenerPorIdAsync(
+        Guid admisionId,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(Registro?.AdmisionId == admisionId ? Registro : null);
+
+    public Task<IReadOnlyList<AdmisionResumen>> ObtenerRecientesAsync(
+        int cantidad,
+        CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+
+    public Task<MetricasAdmisiones> ObtenerMetricasAsync(CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+
+    public IAsyncEnumerable<ReporteAuditoriaItem> ObtenerReporteAuditoriaAsync(
+        DateTime desdeUtc,
+        DateTime hastaUtc,
+        CancellationToken cancellationToken) =>
+        throw new NotSupportedException();
+}
+
+/// <summary>
+/// Doble del almacen documental. <see cref="ExcepcionAlLeer"/> permite simular
+/// una caida de MongoDB y comprobar que la consulta degrada en lugar de fallar.
+/// </summary>
+public sealed class HistoriaClinicaRepositoryFalso : IHistoriaClinicaRepository
+{
+    public string? Contenido { get; set; }
+
+    public Exception? ExcepcionAlLeer { get; set; }
+
+    public List<HistoriaClinica> Guardadas { get; } = [];
+
+    public Task GuardarAsync(HistoriaClinica historiaClinica, CancellationToken cancellationToken)
+    {
+        Guardadas.Add(historiaClinica);
+
+        return Task.CompletedTask;
+    }
+
+    public Task<string?> ObtenerContenidoAsync(
+        string historiaClinicaId,
+        CancellationToken cancellationToken) =>
+        ExcepcionAlLeer is not null
+            ? Task.FromException<string?>(ExcepcionAlLeer)
+            : Task.FromResult(Contenido);
 }

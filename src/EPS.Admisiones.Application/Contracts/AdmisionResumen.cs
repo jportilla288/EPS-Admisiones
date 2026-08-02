@@ -9,6 +9,7 @@ public sealed record AdmisionResumen(
     Guid AdmisionId,
     string TipoDocumento,
     string NumeroDocumento,
+    string NombreCompleto,
     decimal ValorCopago,
     string Moneda,
     DateTime FechaAdmisionUtc,

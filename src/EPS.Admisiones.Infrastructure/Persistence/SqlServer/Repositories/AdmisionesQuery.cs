@@ -30,6 +30,11 @@ public sealed class AdmisionesQuery : IAdmisionesQuery
 
         // El ToString() de los enums no es traducible a SQL, asi que se
         // proyecta el valor crudo y se formatea despues de materializar.
+        //
+        // El nombre se resuelve con una subconsulta correlacionada sobre la FK
+        // (PacienteId es la clave primaria de Pacientes, asi que es un seek por
+        // indice agrupado). EF Core la traduce a un LEFT JOIN: sigue siendo UNA
+        // sola consulta, sin N+1.
         var filas = await _db.Admisiones
             .AsNoTracking()
             .OrderByDescending(a => a.FechaAdmisionUtc)
@@ -42,7 +47,11 @@ public sealed class AdmisionesQuery : IAdmisionesQuery
                 a.Copago.Monto,
                 a.Copago.Moneda,
                 a.FechaAdmisionUtc,
-                a.Estado
+                a.Estado,
+                NombreCompleto = _db.Pacientes
+                    .Where(p => p.Id == a.PacienteId)
+                    .Select(p => p.Nombre + " " + p.Apellido)
+                    .FirstOrDefault()
             })
             .ToListAsync(cancellationToken);
 
@@ -51,11 +60,61 @@ public sealed class AdmisionesQuery : IAdmisionesQuery
                 f.Id,
                 f.Tipo.ToString(),
                 f.Numero,
+                f.NombreCompleto ?? string.Empty,
                 f.Monto,
                 f.Moneda,
                 f.FechaAdmisionUtc,
                 f.Estado.ToString()))
             .ToList();
+    }
+
+    public async Task<AdmisionRegistro?> ObtenerPorIdAsync(
+        Guid admisionId,
+        CancellationToken cancellationToken)
+    {
+        if (admisionId == Guid.Empty)
+        {
+            return null;
+        }
+
+        var fila = await _db.Admisiones
+            .AsNoTracking()
+            .Where(a => a.Id == admisionId)
+            .Select(a => new
+            {
+                a.Id,
+                a.HistoriaClinicaId,
+                a.Documento.Tipo,
+                a.Documento.Numero,
+                a.Copago.Monto,
+                a.Copago.Moneda,
+                a.FechaAdmisionUtc,
+                a.Estado,
+                a.IntentosSincronizacion,
+                a.SincronizadaEnUtc,
+                a.MotivoFallo,
+                NombreCompleto = _db.Pacientes
+                    .Where(p => p.Id == a.PacienteId)
+                    .Select(p => p.Nombre + " " + p.Apellido)
+                    .FirstOrDefault()
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return fila is null
+            ? null
+            : new AdmisionRegistro(
+                fila.Id,
+                fila.HistoriaClinicaId,
+                fila.Tipo.ToString(),
+                fila.Numero,
+                fila.NombreCompleto ?? string.Empty,
+                fila.Monto,
+                fila.Moneda,
+                fila.FechaAdmisionUtc,
+                fila.Estado.ToString(),
+                fila.IntentosSincronizacion,
+                fila.SincronizadaEnUtc,
+                fila.MotivoFallo);
     }
 
     public async Task<MetricasAdmisiones> ObtenerMetricasAsync(CancellationToken cancellationToken)

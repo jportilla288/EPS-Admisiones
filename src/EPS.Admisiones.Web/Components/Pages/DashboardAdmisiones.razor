@@ -129,7 +129,7 @@
                 <thead>
                     <tr>
                         <th scope="col">Hora</th>
-                        <th scope="col">Documento</th>
+                        <th scope="col">Afiliado</th>
                         <th scope="col" class="numero">Copago</th>
                         <th scope="col">Estado</th>
                         <th scope="col">Admision</th>
@@ -143,7 +143,16 @@
                         <tr @key="admision.AdmisionId"
                             class="@(admision.AdmisionId == _resaltada ? "fila--nueva" : null)">
                             <td>@admision.FechaAdmisionUtc.ToLocalTime().ToString("HH:mm:ss")</td>
-                            <td>@admision.TipoDocumento @admision.NumeroDocumento</td>
+                            <td>
+                                <div class="celda-principal">
+                                    @(string.IsNullOrWhiteSpace(admision.NombreCompleto)
+                                        ? "Sin nombre registrado"
+                                        : admision.NombreCompleto)
+                                </div>
+                                <div class="celda-secundaria">
+                                    @admision.TipoDocumento @admision.NumeroDocumento
+                                </div>
+                            </td>
                             <td class="numero">@FormatearMoneda(admision.ValorCopago)</td>
                             <td>
                                 <span class="etiqueta @ClaseEstado(admision.Estado)">

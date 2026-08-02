@@ -2,6 +2,7 @@ using System.Text.Json;
 using EPS.Admisiones.Application.Contracts;
 using EPS.Admisiones.Application.Ports;
 using EPS.Admisiones.Application.UseCases.AdmitirPaciente;
+using EPS.Admisiones.Application.UseCases.ConsultarDetalleAdmision;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EPS.Admisiones.Web.Controllers;
@@ -17,13 +18,16 @@ namespace EPS.Admisiones.Web.Controllers;
 public sealed class AdmisionesController : ControllerBase
 {
     private readonly IAdmitirPacienteUseCase _admitirPaciente;
+    private readonly IConsultarDetalleAdmisionUseCase _consultarDetalle;
     private readonly IAdmisionesQuery _consultas;
 
     public AdmisionesController(
         IAdmitirPacienteUseCase admitirPaciente,
+        IConsultarDetalleAdmisionUseCase consultarDetalle,
         IAdmisionesQuery consultas)
     {
         _admitirPaciente = admitirPaciente;
+        _consultarDetalle = consultarDetalle;
         _consultas = consultas;
     }
 
@@ -49,10 +53,39 @@ public sealed class AdmisionesController : ControllerBase
         // 200 si era un reintento; 201 si realmente se creo el recurso.
         // Se usa Created con URI explicita y no CreatedAtAction: ASP.NET Core
         // recorta el sufijo "Async" de los nombres de accion, asi que
-        // nameof(ObtenerRecientesAsync) no resolveria la ruta en tiempo de ejecucion.
+        // nameof(ObtenerDetalleAsync) no resolveria la ruta en tiempo de ejecucion.
         return resultado.EraDuplicado
             ? Ok(resultado)
-            : Created("/api/admisiones/recientes?cantidad=1", resultado);
+            : Created($"/api/admisiones/{resultado.AdmisionId}", resultado);
+    }
+
+    /// <summary>
+    /// Detalle completo de una admision: registro transaccional de SQL Server
+    /// mas la historia clinica del almacen documental.
+    /// </summary>
+    /// <remarks>
+    /// Si la historia clinica todavia no se ha propagado a MongoDB (o el
+    /// almacen no responde), la respuesta llega igual con
+    /// <c>historiaClinicaJson: null</c> y <c>tieneHistoriaClinica: false</c>.
+    /// El dato transaccional nunca se retiene por un fallo del documental.
+    /// </remarks>
+    [HttpGet("{admisionId:guid}")]
+    [ProducesResponseType(typeof(AdmisionDetalle), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<AdmisionDetalle>> ObtenerDetalleAsync(
+        Guid admisionId,
+        CancellationToken cancellationToken)
+    {
+        var detalle = await _consultarDetalle.EjecutarAsync(admisionId, cancellationToken);
+
+        return detalle is null
+            ? NotFound(new ProblemDetails
+            {
+                Title = "Admision no encontrada",
+                Detail = $"No existe una admision con el identificador {admisionId}.",
+                Status = StatusCodes.Status404NotFound
+            })
+            : Ok(detalle);
     }
 
     /// <summary>Ultimas admisiones registradas (hidrata el dashboard de auditoria).</summary>

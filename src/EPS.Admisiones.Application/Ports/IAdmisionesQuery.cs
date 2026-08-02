@@ -14,6 +14,13 @@ public interface IAdmisionesQuery
         int cantidad,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Registro transaccional de UNA admision. Devuelve <c>null</c> si no
+    /// existe; no lanza, porque "no encontrada" es una respuesta valida que el
+    /// adaptador traduce a 404, no un fallo del sistema.
+    /// </summary>
+    Task<AdmisionRegistro?> ObtenerPorIdAsync(Guid admisionId, CancellationToken cancellationToken);
+
     /// <summary>Indicadores operativos del encabezado del dashboard.</summary>
     Task<MetricasAdmisiones> ObtenerMetricasAsync(CancellationToken cancellationToken);
 

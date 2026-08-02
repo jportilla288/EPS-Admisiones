@@ -1,10 +1,13 @@
 @page "/admisiones"
 @rendermode InteractiveServer
 
+@using System.Text.Json
 @using EPS.Admisiones.Application.Contracts
 @using EPS.Admisiones.Application.Ports
+@using EPS.Admisiones.Application.UseCases.ConsultarDetalleAdmision
 
 @inject IServiceScopeFactory ScopeFactory
+@inject ILogger<ConsultarAdmisiones> Logger
 
 @* Listado consultable de admisiones. A diferencia del monitoreo en vivo, esta
    pagina no se suscribe a eventos: es una consulta bajo demanda, que es lo que
@@ -111,7 +114,7 @@
                 <thead>
                     <tr>
                         <th scope="col">Fecha y hora</th>
-                        <th scope="col">Documento</th>
+                        <th scope="col">Afiliado</th>
                         <th scope="col" class="numero">Copago bloqueado</th>
                         <th scope="col">Historia clinica</th>
                         <th scope="col">Admision</th>
@@ -120,7 +123,16 @@
                 <tbody>
                     @foreach (var admision in Filtradas)
                     {
-                        <tr @key="admision.AdmisionId">
+                        @* Fila accionable: se usa un <tr> con rol de boton y
+                           manejo de teclado para no perder accesibilidad al
+                           hacerla clicable. *@
+                        <tr @key="admision.AdmisionId"
+                            class="fila--accionable @(admision.AdmisionId == _detalle?.AdmisionId ? "fila--activa" : null)"
+                            role="button"
+                            tabindex="0"
+                            aria-label="Ver detalle de la admision de @NombreOAnonimo(admision)"
+                            @onclick="() => AbrirDetalleAsync(admision.AdmisionId)"
+                            @onkeydown="e => OnTeclaFilaAsync(e, admision.AdmisionId)">
                             <td>
                                 <div class="celda-principal">
                                     @admision.FechaAdmisionUtc.ToLocalTime().ToString("dd/MM/yyyy")
@@ -130,8 +142,10 @@
                                 </div>
                             </td>
                             <td>
-                                <div class="celda-principal">@admision.NumeroDocumento</div>
-                                <div class="celda-secundaria">@DescribirTipo(admision.TipoDocumento)</div>
+                                <div class="celda-principal">@NombreOAnonimo(admision)</div>
+                                <div class="celda-secundaria">
+                                    @admision.TipoDocumento @admision.NumeroDocumento
+                                </div>
                             </td>
                             <td class="numero">@FormatearMoneda(admision.ValorCopago)</td>
                             <td>
@@ -148,6 +162,111 @@
     }
 </section>
 
+@* ---------------------------------------------------------------------------
+   Detalle: es la UNICA vista que lee de los dos almacenes a la vez. Los datos
+   de la izquierda vienen de SQL Server; el documento clinico de la derecha,
+   de MongoDB.
+   --------------------------------------------------------------------------- *@
+@if (_detalle is { } detalle)
+{
+    <section class="panel" style="margin-top:1.25rem" id="detalle-admision">
+        <header class="panel__encabezado">
+            <span class="panel__titulo">
+                Detalle de la admision @detalle.AdmisionId.ToString()[..8]
+            </span>
+            <button type="button" class="boton boton--secundario" @onclick="CerrarDetalle">
+                Cerrar
+            </button>
+        </header>
+
+        <div class="panel__cuerpo">
+            <dl class="campos">
+                <div class="campo">
+                    <dt><label>Afiliado</label></dt>
+                    <dd class="celda-principal">
+                        @(string.IsNullOrWhiteSpace(detalle.NombreCompleto) ? "Sin nombre registrado" : detalle.NombreCompleto)
+                    </dd>
+                </div>
+                <div class="campo">
+                    <dt><label>Documento</label></dt>
+                    <dd class="celda-principal">
+                        @DescribirTipo(detalle.TipoDocumento) @detalle.NumeroDocumento
+                    </dd>
+                </div>
+                <div class="campo">
+                    <dt><label>Copago bloqueado</label></dt>
+                    <dd class="celda-principal">
+                        @FormatearMoneda(detalle.ValorCopago) @detalle.Moneda
+                    </dd>
+                </div>
+                <div class="campo">
+                    <dt><label>Fecha de admision</label></dt>
+                    <dd class="celda-principal">
+                        @detalle.FechaAdmisionUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss")
+                    </dd>
+                </div>
+                <div class="campo">
+                    <dt><label>Estado de sincronizacion</label></dt>
+                    <dd>
+                        <span class="etiqueta @ClaseEstado(detalle.Estado)">
+                            @TextoEstado(detalle.Estado)
+                        </span>
+                        @if (detalle.IntentosSincronizacion > 0)
+                        {
+                            <span class="ayuda">@detalle.IntentosSincronizacion intento(s)</span>
+                        }
+                    </dd>
+                </div>
+                <div class="campo">
+                    <dt><label>Historia clinica (MongoDB)</label></dt>
+                    <dd class="mono">@detalle.HistoriaClinicaId</dd>
+                </div>
+            </dl>
+
+            @if (detalle.MotivoFallo is { Length: > 0 } motivo)
+            {
+                <div class="aviso aviso--error" role="alert" style="margin-top:1rem">
+                    <strong>Ultimo error de sincronizacion</strong>
+                    <span class="aviso__cuerpo">@motivo</span>
+                </div>
+            }
+        </div>
+
+        <header class="panel__encabezado">
+            <span class="panel__titulo">Documento clinico completo</span>
+            <span class="conexion">Origen: MongoDB</span>
+        </header>
+
+        <div class="panel__cuerpo">
+            @if (_cargandoDetalle)
+            {
+                <div class="esqueleto" style="height:8rem"></div>
+            }
+            else if (detalle.TieneHistoriaClinica)
+            {
+                <textarea readonly rows="16" aria-label="Historia clinica en formato FHIR">@_historiaFormateada</textarea>
+                <span class="ayuda">
+                    Este es el payload FHIR integro que se guardo en el almacen
+                    documental. En SQL Server solo viven el documento y el copago.
+                </span>
+            }
+            else
+            {
+                <div class="aviso" role="status">
+                    <strong>La historia clinica todavia no esta disponible</strong>
+                    <span class="aviso__cuerpo">
+                        El registro transaccional existe y el copago esta bloqueado,
+                        pero el Outbox aun no ha propagado el documento a MongoDB
+                        (o el almacen documental no responde). La consulta se
+                        devuelve igual: el dato financiero nunca se retiene por un
+                        fallo del almacen documental.
+                    </span>
+                </div>
+            }
+        </div>
+    </section>
+}
+
 @code {
     private const int MaximoRegistros = 200;
 
@@ -157,6 +276,10 @@
     private string _filtroEstado = string.Empty;
     private bool _cargando = true;
 
+    private AdmisionDetalle? _detalle;
+    private string? _historiaFormateada;
+    private bool _cargandoDetalle;
+
     /// <summary>
     /// Filtrado en memoria sobre un tope acotado de registros. Para volumenes
     /// de produccion esto se moveria al servidor con paginacion por keyset;
@@ -165,7 +288,8 @@
     private List<AdmisionResumen> Filtradas =>
         _admisiones
             .Where(a => string.IsNullOrWhiteSpace(_busqueda)
-                || a.NumeroDocumento.Contains(_busqueda.Trim(), StringComparison.OrdinalIgnoreCase))
+                || a.NumeroDocumento.Contains(_busqueda.Trim(), StringComparison.OrdinalIgnoreCase)
+                || a.NombreCompleto.Contains(_busqueda.Trim(), StringComparison.OrdinalIgnoreCase))
             .Where(a => string.IsNullOrEmpty(_filtroEstado) || a.Estado == _filtroEstado)
             .ToList();
 
@@ -197,6 +321,82 @@
     private void OnBuscar(ChangeEventArgs e) => _busqueda = e.Value?.ToString() ?? string.Empty;
 
     private void OnFiltrarEstado(ChangeEventArgs e) => _filtroEstado = e.Value?.ToString() ?? string.Empty;
+
+    /// <summary>
+    /// Carga el detalle combinando SQL Server y MongoDB. Igual que el resto de
+    /// la pagina, resuelve el caso de uso en un ambito de vida corta para no
+    /// retener un DbContext durante todo el circuito.
+    /// </summary>
+    private async Task AbrirDetalleAsync(Guid admisionId)
+    {
+        // Segundo clic sobre la misma fila: se cierra, como un acordeon.
+        if (_detalle?.AdmisionId == admisionId)
+        {
+            CerrarDetalle();
+            return;
+        }
+
+        _cargandoDetalle = true;
+        _detalle = null;
+        _historiaFormateada = null;
+
+        try
+        {
+            using var scope = ScopeFactory.CreateScope();
+            var caso = scope.ServiceProvider.GetRequiredService<IConsultarDetalleAdmisionUseCase>();
+
+            _detalle = await caso.EjecutarAsync(admisionId, CancellationToken.None);
+            _historiaFormateada = Embellecer(_detalle?.HistoriaClinicaJson);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Fallo al cargar el detalle de la admision {AdmisionId}.", admisionId);
+        }
+        finally
+        {
+            _cargandoDetalle = false;
+        }
+    }
+
+    private Task OnTeclaFilaAsync(KeyboardEventArgs e, Guid admisionId) =>
+        e.Key is "Enter" or " " ? AbrirDetalleAsync(admisionId) : Task.CompletedTask;
+
+    private void CerrarDetalle()
+    {
+        _detalle = null;
+        _historiaFormateada = null;
+    }
+
+    /// <summary>
+    /// El documento se guarda como texto literal para preservar fidelidad
+    /// clinica, asi que aqui se reindenta solo para mostrarlo. Si por lo que
+    /// sea no fuese JSON valido, se muestra tal cual antes que fallar.
+    /// </summary>
+    private static string? Embellecer(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var documento = JsonDocument.Parse(json);
+
+            return JsonSerializer.Serialize(
+                documento.RootElement,
+                new JsonSerializerOptions { WriteIndented = true });
+        }
+        catch (JsonException)
+        {
+            return json;
+        }
+    }
+
+    private static string NombreOAnonimo(AdmisionResumen admision) =>
+        string.IsNullOrWhiteSpace(admision.NombreCompleto)
+            ? "Sin nombre registrado"
+            : admision.NombreCompleto;
 
     private static string FormatearMoneda(decimal valor) => $"$ {valor:N0}";
 

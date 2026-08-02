@@ -7,6 +7,12 @@ namespace EPS.Admisiones.Application.Contracts;
 /// </summary>
 /// <param name="AdmisionId">Correlacion con el registro transaccional de SQL Server.</param>
 /// <param name="HistoriaClinicaId">Clave de upsert en MongoDB (garantiza idempotencia).</param>
+/// <param name="NombreCompleto">
+/// Nombre del afiliado, viajando con el mensaje para que el despachador arme la
+/// notificacion del dashboard sin un viaje extra a SQL Server por cada mensaje.
+/// Es nullable a proposito: los mensajes encolados antes de que existiera este
+/// campo se deserializan con null en lugar de reventar el despachador.
+/// </param>
 public sealed record SincronizarHistoriaClinica(
     Guid AdmisionId,
     string HistoriaClinicaId,
@@ -16,4 +22,5 @@ public sealed record SincronizarHistoriaClinica(
     string Moneda,
     string RecursoFhir,
     string ContenidoJson,
-    DateTime CapturadaEnUtc);
+    DateTime CapturadaEnUtc,
+    string? NombreCompleto = null);

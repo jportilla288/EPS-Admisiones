@@ -96,7 +96,7 @@ No es por ceremonia. Los tres beneficios concretos en este proyecto:
    solo emite eventos. Cambiar el transporte a Azure Service Bus es un cambio local.
 
 Contrapeso honesto: hexagonal cuesta indirección. La disciplina aquí fue **no crear un puerto sin una
-segunda implementación plausible o una necesidad real de test**. Por eso hay 8 puertos y no 20.
+segunda implementación plausible o una necesidad real de test**. Por eso hay diez puertos y no veinte.
 
 ---
 
@@ -173,8 +173,9 @@ src/
 │   └── Common/                       AggregateRoot, ValueObject, IDomainEvent
 │
 ├── EPS.Admisiones.Application/       Casos de uso y puertos
-│   ├── Ports/                        8 interfaces = frontera del hexágono
+│   ├── Ports/                        Interfaces = frontera del hexágono
 │   ├── UseCases/AdmitirPaciente/     AdmitirPacienteUseCase + extractor FHIR
+│   ├── UseCases/ConsultarDetalle…/   Lectura que compone SQL Server + MongoDB
 │   └── Contracts/                    DTOs de entrada/salida
 │
 ├── EPS.Admisiones.Infrastructure/    Adaptadores
@@ -194,11 +195,12 @@ db/01-schema.sql                      Modelo relacional (equivalente a las migra
 docs/                                 Respuestas de las Partes 1 y 4
 ```
 
-### Los ocho puertos
+### Los puertos
 
 | Puerto | Dirección | Adaptador |
 |---|---|---|
-| `IAdmitirPacienteUseCase` | Entrada | `AdmisionesController`, dashboard |
+| `IAdmitirPacienteUseCase` | Entrada | `AdmisionesController`, formulario Blazor |
+| `IConsultarDetalleAdmisionUseCase` | Entrada | `AdmisionesController`, listado Blazor |
 | `IAdmisionRepository` | Salida | EF Core / SQL Server |
 | `IPacienteRepository` | Salida | EF Core / SQL Server |
 | `IAdmisionesQuery` | Salida (lectura) | EF Core con proyecciones |
@@ -257,6 +259,21 @@ curl -X POST http://localhost:5080/api/admisiones \
 
 El archivo [`EPS.Admisiones.Web.http`](src/EPS.Admisiones.Web/EPS.Admisiones.Web.http) tiene todas las
 peticiones listas para VS Code / Visual Studio / Rider.
+
+### La lectura políglota
+
+`GET /api/admisiones/{id}` es la única consulta del sistema que **lee de los dos almacenes**: trae el
+registro transaccional de SQL Server y le adjunta la historia clínica íntegra de MongoDB. En la
+interfaz es lo que aparece al hacer clic sobre cualquier fila del listado.
+
+La composición vive en `ConsultarDetalleAdmisionUseCase`, no en un repositorio, precisamente porque
+una consulta que cruza dos persistencias no pertenece al puerto de ninguna de las dos: si viviera en
+`IAdmisionesQuery`, su adaptador de EF Core acabaría dependiendo del driver de Mongo.
+
+**Degrada en lugar de fallar.** Si el Outbox todavía no ha propagado el documento —o si MongoDB no
+responde— la respuesta llega igual con `historiaClinicaJson: null` y `tieneHistoriaClinica: false`.
+El copago bloqueado es un dato financiero que vive en SQL Server y no puede quedar inaccesible por
+una caída del almacén documental.
 
 ### Verificar la consistencia en ambos almacenes
 
@@ -351,6 +368,7 @@ los puertos. Lo más relevante:
 | `Si_SQL_falla_no_queda_nada_a_medias` | Atomicidad del commit |
 | `Un_payload_invalido_no_llega_a_tocar_la_base_de_datos` | Validación antes de la persistencia |
 | `Tras_agotar_los_reintentos_queda_marcada_para_conciliacion_manual` | La admisión nunca se pierde en silencio |
+| `Si_Mongo_falla_devuelve_el_registro_transaccional_sin_la_historia` | Una caída del almacén documental no deja al auditor sin el dato financiero |
 
 ---
 

@@ -120,7 +120,8 @@ public sealed class AdmitirPacienteUseCase : IAdmitirPacienteUseCase
                     evento.Copago.Moneda,
                     datos.RecursoFhir,
                     command.HistoriaClinica.GetRawText(),
-                    evento.OcurridoEnUtc),
+                    evento.OcurridoEnUtc,
+                    $"{datos.Nombre} {datos.Apellido}"),
                 cancellationToken);
         }
 

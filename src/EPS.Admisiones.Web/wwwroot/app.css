@@ -557,6 +557,32 @@ h2 {
     }
 }
 
+/* Filas que abren el detalle de la admision. */
+.fila--accionable {
+    cursor: pointer;
+}
+
+/* El foco visible es obligatorio: la fila es alcanzable con Tab. */
+.fila--accionable:focus-visible {
+    outline: 2px solid var(--azul-600, #1d4ed8);
+    outline-offset: -2px;
+}
+
+.fila--activa,
+.tabla tbody tr.fila--activa:nth-child(even) {
+    background: var(--azul-50);
+    box-shadow: inset 3px 0 0 var(--azul-600, #1d4ed8);
+}
+
+/* Listas de definicion reutilizando la rejilla de formularios. */
+.campo dt {
+    margin: 0;
+}
+
+.campo dd {
+    margin: 0;
+}
+
 /* ===========================================================================
    ETIQUETAS DE ESTADO
    =========================================================================== */

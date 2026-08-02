@@ -1,4 +1,5 @@
 using EPS.Admisiones.Application.UseCases.AdmitirPaciente;
+using EPS.Admisiones.Application.UseCases.ConsultarDetalleAdmision;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace EPS.Admisiones.Application;
@@ -12,6 +13,7 @@ public static class ApplicationServiceCollectionExtensions
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
         services.AddScoped<IAdmitirPacienteUseCase, AdmitirPacienteUseCase>();
+        services.AddScoped<IConsultarDetalleAdmisionUseCase, ConsultarDetalleAdmisionUseCase>();
         services.AddSingleton<IExtractorDatosFacturables, ExtractorDatosFacturables>();
 
         return services;

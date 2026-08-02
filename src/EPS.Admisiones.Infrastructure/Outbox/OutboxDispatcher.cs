@@ -193,6 +193,8 @@ public sealed class OutboxDispatcher : BackgroundService
             contrato.AdmisionId,
             contrato.TipoDocumento,
             contrato.NumeroDocumento,
+            // Mensajes encolados por una version anterior no traen el nombre.
+            contrato.NombreCompleto ?? string.Empty,
             contrato.ValorCopago,
             contrato.Moneda,
             contrato.CapturadaEnUtc,
