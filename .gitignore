@@ -33,7 +33,7 @@ secrets.json
 .env
 
 ## Configuración local de la máquina (no aplica a otros equipos)
-.claude/settings.local.json
+*.local.json
 
 ## Registros
 *.log
