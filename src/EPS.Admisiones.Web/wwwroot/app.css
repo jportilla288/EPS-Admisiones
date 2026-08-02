@@ -758,7 +758,10 @@ code {
     background: #fffafa;
 }
 
-.campo .ayuda {
+/* Utilidad general y no `.campo .ayuda`: el texto de apoyo tambien aparece
+   fuera de los formularios (avisos, paneles de detalle), donde antes quedaba
+   sin estilo y se leia igual de fuerte que el contenido principal. */
+.ayuda {
     font-size: 0.77rem;
     color: var(--texto-tenue);
 }
@@ -900,7 +903,9 @@ code {
     color: var(--azul-800);
 }
 
-.aviso strong {
+/* Solo el titulo del aviso es un bloque. Con el selector descendiente, un
+   <strong> usado para enfatizar dentro del cuerpo se rompia a linea propia. */
+.aviso > strong {
     display: block;
     margin-bottom: 0.2rem;
 }

@@ -42,7 +42,7 @@ public sealed class AdmisionTests
     {
         var error = Assert.Throws<DomainException>(() => Admision.Registrar(
             Guid.NewGuid(),
-            DocumentoPaciente.Crear("CC", "123"),
+            DocumentoPaciente.Crear("CC", "91234567"),
             ValorCopago.Crear(1000m),
             new DateTime(2026, 7, 31, 9, 30, 0, DateTimeKind.Local)));
 
@@ -82,7 +82,7 @@ public sealed class AdmisionTests
     [Fact]
     public void Dos_value_objects_con_el_mismo_valor_son_iguales()
     {
-        Assert.Equal(DocumentoPaciente.Crear("CC", "123"), DocumentoPaciente.Crear("cc", "123"));
+        Assert.Equal(DocumentoPaciente.Crear("CC", "91234567"), DocumentoPaciente.Crear("cc", "91234567"));
         Assert.Equal(ValorCopago.Crear(1000m), ValorCopago.Crear(1000m, "cop"));
     }
 }

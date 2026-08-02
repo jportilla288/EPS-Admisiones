@@ -28,7 +28,7 @@ public sealed class ExtractorDatosFacturablesTests
     {
         var payload = PayloadsDePrueba.Json($$"""
         {
-          "paciente": { "tipoDocumento": "CC", "numeroDocumento": "123", "nombre": "A", "apellido": "B" },
+          "paciente": { "tipoDocumento": "CC", "numeroDocumento": "91234567", "nombre": "A", "apellido": "B" },
           "copago": { "valor": {{monto}} }
         }
         """);
@@ -54,7 +54,7 @@ public sealed class ExtractorDatosFacturablesTests
     {
         var payload = PayloadsDePrueba.Json("""
         {
-          "paciente": { "tipoDocumento": "CC", "numeroDocumento": "123", "nombre": "A", "apellido": "B" },
+          "paciente": { "tipoDocumento": "CC", "numeroDocumento": "91234567", "nombre": "A", "apellido": "B" },
           "copago": { "valor": -5000 }
         }
         """);
@@ -67,7 +67,7 @@ public sealed class ExtractorDatosFacturablesTests
     {
         var payload = PayloadsDePrueba.Json("""
         {
-          "paciente": { "tipoDocumento": "XX", "numeroDocumento": "123", "nombre": "A", "apellido": "B" },
+          "paciente": { "tipoDocumento": "XX", "numeroDocumento": "91234567", "nombre": "A", "apellido": "B" },
           "copago": { "valor": 1000 }
         }
         """);

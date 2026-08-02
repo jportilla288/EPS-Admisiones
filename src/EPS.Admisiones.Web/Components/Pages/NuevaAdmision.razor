@@ -28,23 +28,35 @@
 <header class="pagina__encabezado">
     <div>
         <h1>Nueva admision</h1>
+        @* Texto para quien admite pacientes, no para quien mantiene el sistema:
+           el detalle de la persistencia poliglota se explica en el README y se
+           rotula en la vista de detalle, donde el contexto si es tecnico. *@
         <p class="pagina__descripcion">
-            Los datos se ensamblan en un documento FHIR/HL7 que se guarda integro
-            en MongoDB. De el se extraen el documento del paciente y el copago
-            hacia el registro transaccional en SQL Server.
+            Registra el ingreso del afiliado y bloquea el copago en su cuenta.
+            Los campos marcados con <span class="requerido">*</span> son obligatorios.
         </p>
     </div>
 </header>
 
 @if (_resultado is { } resultado)
 {
+    @* Confirmacion en lenguaje de negocio. Dos omisiones deliberadas:
+        - El estado (`resultado.Estado`) nace caducado: al responder siempre es
+          PendienteSincronizacion, y el Outbox lo pasa a Sincronizada segundos
+          despues, contradiciendo al listado.
+        - Los motores de base de datos. Quien admite pacientes no necesita saber
+          que hay dos almacenes; solo que el paciente quedo admitido y el copago
+          reservado. La arquitectura se explica donde toca, no en un aviso. *@
     <div class="aviso aviso--exito" role="status" style="margin-bottom:1.25rem">
         <strong>Admision registrada</strong>
         <span class="aviso__cuerpo">
-            Identificador <code>@resultado.AdmisionId</code> en estado
-            <strong>@resultado.Estado</strong>.
-            La historia clinica se esta sincronizando con MongoDB;
-            aparecera en el <a href="dashboard">dashboard</a> en unos segundos.
+            Se admitio a <strong>@_pacienteAdmitido</strong> y se bloquearon
+            <strong>@FormatearMoneda(_copagoBloqueado)</strong> de copago en su cuenta.
+            Puedes verla en <a href="admisiones">Consultar admisiones</a>.
+            <br />
+            <span class="ayuda">
+                Numero de admision: <code>@resultado.AdmisionId</code>
+            </span>
         </span>
     </div>
 }
@@ -166,6 +178,11 @@
     private string? _error;
     private AdmitirPacienteResult? _resultado;
 
+    // El formulario se limpia tras un envio exitoso, asi que lo que se muestra
+    // en la confirmacion hay que capturarlo ANTES de vaciarlo.
+    private string _pacienteAdmitido = string.Empty;
+    private decimal _copagoBloqueado;
+
     private async Task AdmitirAsync()
     {
         _enviando = true;
@@ -184,6 +201,9 @@
             _resultado = await caso.EjecutarAsync(
                 new AdmitirPacienteCommand(payload, Guid.NewGuid()),
                 CancellationToken.None);
+
+            _pacienteAdmitido = $"{_modelo.Nombre?.Trim()} {_modelo.Apellido?.Trim()}".Trim();
+            _copagoBloqueado = _modelo.ValorCopago;
 
             _modelo.Limpiar();
         }
@@ -256,6 +276,8 @@
     private string VistaPreviaJson() =>
         JsonSerializer.Serialize(ConstruirDocumentoFhir(), OpcionesJson);
 
+    private static string FormatearMoneda(decimal valor) => $"$ {valor:N0}";
+
     private static readonly JsonSerializerOptions OpcionesJson =
         new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
@@ -272,8 +294,14 @@
         public string TipoDocumento { get; set; } = "CC";
 
         [Required(ErrorMessage = "El numero de documento es obligatorio.")]
-        [RegularExpression("^[a-zA-Z0-9]{1,20}$",
-            ErrorMessage = "Solo letras y digitos, maximo 20 caracteres.")]
+        // El lookahead descarta las secuencias de ceros ("0000"), que pasan
+        // cualquier validacion de formato y aun asi no identifican a nadie.
+        // La regla que depende del TIPO (CC/TI/RC solo admiten digitos) no cabe
+        // en una expresion regular de un solo campo: vive en DocumentoPaciente
+        // y llega como DomainException. El formulario adelanta lo barato; el
+        // dominio sigue siendo la ultima palabra.
+        [RegularExpression(@"^(?!0+$)[a-zA-Z0-9]{5,20}$",
+            ErrorMessage = "Entre 5 y 20 letras o digitos, y no puede ser todo ceros.")]
         public string? NumeroDocumento { get; set; }
 
         [Required(ErrorMessage = "Los nombres son obligatorios.")]
